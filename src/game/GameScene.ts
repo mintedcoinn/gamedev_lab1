@@ -10,7 +10,7 @@ const POPCORN_MAX_SPEED_X = 260;
 const POPCORN_MIN_SPEED_Y = -360;
 const POPCORN_MAX_SPEED_Y = -240;
 const GAME_TOP_PADDING = 104;
-const SECOND_PHASE_DELAY_SECONDS = 10;
+const SECOND_PHASE_SCORE_THRESHOLD = 5;
 const SECOND_PHASE_POPCORN_SPEED_MULTIPLIER = 1.25;
 const BOTTOM_POPCORN_MIN_SCREEN_REACH = 0.6;
 
@@ -29,7 +29,6 @@ export class GameScene extends Phaser.Scene {
   private restartKey!: Phaser.Input.Keyboard.Key;
   private pauseKey!: Phaser.Input.Keyboard.Key;
   private score = 0;
-  private elapsedSeconds = 0;
   private popcornVelocity = new Phaser.Math.Vector2(0, 0);
   private isGameOver = false;
   private isPaused = false;
@@ -68,7 +67,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.timerText = this.add
-      .text(width - 24, height - 48, `Фаза 1: ${SECOND_PHASE_DELAY_SECONDS}`, {
+      .text(width - 24, height - 48, `Фаза 1: ${SECOND_PHASE_SCORE_THRESHOLD} очков`, {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '22px',
         color: '#ffffff',
@@ -117,21 +116,20 @@ export class GameScene extends Phaser.Scene {
     if (this.isPaused) return;
 
     const seconds = delta / 1000;
-    this.updatePhaseTimer(seconds);
     this.moveHead(seconds);
     this.movePopcorn(seconds);
     this.checkPopcornCatch();
     this.checkPopcornMiss();
   }
 
-  private updatePhaseTimer(seconds: number): void {
+  private checkSecondPhaseStart(): void {
     if (this.isSecondPhase) return;
 
-    this.elapsedSeconds += seconds;
-    const secondsLeft = Math.max(0, Math.ceil(SECOND_PHASE_DELAY_SECONDS - this.elapsedSeconds));
-    this.timerText.setText(`Фаза 1: ${secondsLeft}`);
-
-    if (this.elapsedSeconds < SECOND_PHASE_DELAY_SECONDS) return;
+    const pointsLeft = SECOND_PHASE_SCORE_THRESHOLD - this.score;
+    if (pointsLeft > 0) {
+      this.timerText.setText(`Фаза 1: ${pointsLeft} очков`);
+      return;
+    }
 
     this.isSecondPhase = true;
     this.timerText.setText('Фаза 2');
@@ -247,6 +245,7 @@ export class GameScene extends Phaser.Scene {
 
     this.score += 1;
     this.scoreText.setText(`Счёт: ${this.score}`);
+    this.checkSecondPhaseStart();
     this.launchPopcorn();
   }
 
@@ -270,12 +269,11 @@ export class GameScene extends Phaser.Scene {
 
   private restartGame(): void {
     this.score = 0;
-    this.elapsedSeconds = 0;
     this.isGameOver = false;
     this.isPaused = false;
     this.isSecondPhase = false;
     this.scoreText.setText('Счёт: 0');
-    this.timerText.setText(`Фаза 1: ${SECOND_PHASE_DELAY_SECONDS}`);
+    this.timerText.setText(`Фаза 1: ${SECOND_PHASE_SCORE_THRESHOLD} очков`);
     this.messageText.setText('');
     this.head.setPosition(this.scale.width / 2, this.scale.height * 0.68);
     this.launchPopcorn();
