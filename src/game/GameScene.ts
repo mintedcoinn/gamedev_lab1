@@ -10,6 +10,8 @@ const POPCORN_MAX_SPEED_X = 260;
 const POPCORN_MIN_SPEED_Y = -360;
 const POPCORN_MAX_SPEED_Y = -240;
 const GAME_TOP_PADDING = 104;
+const SECOND_PHASE_DELAY_SECONDS = 10;
+const SECOND_PHASE_POPCORN_SPEED_MULTIPLIER = 1.25;
 
 /**
  * Простая игра: двигаем голову и ловим летящий попкорн ртом.
@@ -21,13 +23,16 @@ export class GameScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private scoreText!: Phaser.GameObjects.Text;
+  private timerText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private restartKey!: Phaser.Input.Keyboard.Key;
   private pauseKey!: Phaser.Input.Keyboard.Key;
   private score = 0;
+  private elapsedSeconds = 0;
   private popcornVelocity = new Phaser.Math.Vector2(0, 0);
   private isGameOver = false;
   private isPaused = false;
+  private isSecondPhase = false;
 
   constructor() {
     super('GameScene');
@@ -60,6 +65,14 @@ export class GameScene extends Phaser.Scene {
       fontSize: '22px',
       color: '#ffffff',
     });
+
+    this.timerText = this.add
+      .text(width - 24, height - 48, `Фаза 1: ${SECOND_PHASE_DELAY_SECONDS}`, {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: '22px',
+        color: '#ffffff',
+      })
+      .setOrigin(1, 0);
 
     this.messageText = this.add
       .text(width / 2, height / 2, '', {
@@ -103,10 +116,30 @@ export class GameScene extends Phaser.Scene {
     if (this.isPaused) return;
 
     const seconds = delta / 1000;
+    this.updatePhaseTimer(seconds);
     this.moveHead(seconds);
     this.movePopcorn(seconds);
     this.checkPopcornCatch();
     this.checkPopcornMiss();
+  }
+
+  private updatePhaseTimer(seconds: number): void {
+    if (this.isSecondPhase) return;
+
+    this.elapsedSeconds += seconds;
+    const secondsLeft = Math.max(0, Math.ceil(SECOND_PHASE_DELAY_SECONDS - this.elapsedSeconds));
+    this.timerText.setText(`Фаза 1: ${secondsLeft}`);
+
+    if (this.elapsedSeconds < SECOND_PHASE_DELAY_SECONDS) return;
+
+    this.isSecondPhase = true;
+    this.timerText.setText('Фаза 2');
+    this.messageText.setText('Наступила вторая фаза!');
+    this.time.delayedCall(2200, () => {
+      if (!this.isGameOver && !this.isPaused) {
+        this.messageText.setText('');
+      }
+    });
   }
 
   private createPlayerHead(x: number, y: number): void {
@@ -156,14 +189,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private launchPopcorn(): void {
-    const fromLeft = Phaser.Math.Between(0, 1) === 0;
-    const startX = fromLeft ? -POPCORN_RADIUS : this.scale.width + POPCORN_RADIUS;
-    const startY = Phaser.Math.Between(GAME_TOP_PADDING + 20, this.scale.height - 180);
+    const spawnSide = this.isSecondPhase ? Phaser.Math.Between(0, 3) : Phaser.Math.Between(0, 1);
     const speedX = Phaser.Math.Between(POPCORN_MIN_SPEED_X, POPCORN_MAX_SPEED_X);
     const speedY = Phaser.Math.Between(POPCORN_MIN_SPEED_Y, POPCORN_MAX_SPEED_Y);
+    const speedMultiplier = this.isSecondPhase ? SECOND_PHASE_POPCORN_SPEED_MULTIPLIER : 1;
+
+    let startX = 0;
+    let startY = 0;
+    let velocityX = 0;
+    let velocityY = 0;
+
+    if (spawnSide === 0 || spawnSide === 1) {
+      const fromLeft = spawnSide === 0;
+      startX = fromLeft ? -POPCORN_RADIUS : this.scale.width + POPCORN_RADIUS;
+      startY = Phaser.Math.Between(GAME_TOP_PADDING + 20, this.scale.height - 180);
+      velocityX = fromLeft ? speedX : -speedX;
+      velocityY = speedY;
+    } else {
+      const fromTop = spawnSide === 2;
+      startX = Phaser.Math.Between(POPCORN_RADIUS, this.scale.width - POPCORN_RADIUS);
+      startY = fromTop ? -POPCORN_RADIUS : this.scale.height + POPCORN_RADIUS;
+      velocityX = Phaser.Math.Between(-POPCORN_MAX_SPEED_X, POPCORN_MAX_SPEED_X);
+      velocityY = fromTop ? Math.abs(speedY) : speedY;
+    }
 
     this.popcorn.setPosition(startX, startY);
-    this.popcornVelocity.set(fromLeft ? speedX : -speedX, speedY);
+    this.popcornVelocity.set(velocityX * speedMultiplier, velocityY * speedMultiplier);
   }
 
   private movePopcorn(seconds: number): void {
@@ -192,10 +243,11 @@ export class GameScene extends Phaser.Scene {
 
   private checkPopcornMiss(): void {
     const fellBelowScreen = this.popcorn.y > this.scale.height + POPCORN_RADIUS;
+    const flewPastTop = this.popcorn.y < -POPCORN_RADIUS * 3;
     const flewPastLeft = this.popcorn.x < -POPCORN_RADIUS * 3;
     const flewPastRight = this.popcorn.x > this.scale.width + POPCORN_RADIUS * 3;
 
-    if (!fellBelowScreen && !flewPastLeft && !flewPastRight) return;
+    if (!fellBelowScreen && !flewPastTop && !flewPastLeft && !flewPastRight) return;
 
     this.isGameOver = true;
     this.isPaused = false;
@@ -209,9 +261,12 @@ export class GameScene extends Phaser.Scene {
 
   private restartGame(): void {
     this.score = 0;
+    this.elapsedSeconds = 0;
     this.isGameOver = false;
     this.isPaused = false;
+    this.isSecondPhase = false;
     this.scoreText.setText('Счёт: 0');
+    this.timerText.setText(`Фаза 1: ${SECOND_PHASE_DELAY_SECONDS}`);
     this.messageText.setText('');
     this.head.setPosition(this.scale.width / 2, this.scale.height * 0.68);
     this.launchPopcorn();
