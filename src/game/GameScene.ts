@@ -12,6 +12,7 @@ const POPCORN_MAX_SPEED_Y = -240;
 const GAME_TOP_PADDING = 104;
 const SECOND_PHASE_DELAY_SECONDS = 10;
 const SECOND_PHASE_POPCORN_SPEED_MULTIPLIER = 1.25;
+const BOTTOM_POPCORN_MIN_SCREEN_REACH = 0.6;
 
 /**
  * Простая игра: двигаем голову и ловим летящий попкорн ртом.
@@ -210,11 +211,19 @@ export class GameScene extends Phaser.Scene {
       startX = Phaser.Math.Between(POPCORN_RADIUS, this.scale.width - POPCORN_RADIUS);
       startY = fromTop ? -POPCORN_RADIUS : this.scale.height + POPCORN_RADIUS;
       velocityX = Phaser.Math.Between(-POPCORN_MAX_SPEED_X, POPCORN_MAX_SPEED_X);
-      velocityY = fromTop ? Math.abs(speedY) : speedY;
+      velocityY = fromTop ? Math.abs(speedY) : this.getBottomPopcornSpeedY(startY);
     }
 
     this.popcorn.setPosition(startX, startY);
     this.popcornVelocity.set(velocityX * speedMultiplier, velocityY * speedMultiplier);
+  }
+
+  private getBottomPopcornSpeedY(startY: number): number {
+    const targetY = this.scale.height * BOTTOM_POPCORN_MIN_SCREEN_REACH;
+    const distanceToTarget = startY - targetY;
+    const minSpeedToReachTarget = Math.sqrt(2 * POPCORN_GRAVITY * distanceToTarget);
+
+    return -Math.max(Math.abs(POPCORN_MIN_SPEED_Y), minSpeedToReachTarget);
   }
 
   private movePopcorn(seconds: number): void {
