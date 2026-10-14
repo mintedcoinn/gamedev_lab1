@@ -1,26 +1,14 @@
 import Phaser from 'phaser';
-
-const HEAD_SPEED = 320;
-const HEAD_RADIUS = 42;
-const MOUTH_RADIUS = 22;
-const POPCORN_RADIUS = 12;
-const POPCORN_GRAVITY = 520;
-const POPCORN_MIN_SPEED_X = 150;
-const POPCORN_MAX_SPEED_X = 260;
-const POPCORN_MIN_SPEED_Y = -360;
-const POPCORN_MAX_SPEED_Y = -240;
-const GAME_TOP_PADDING = 104;
-const SECOND_PHASE_SCORE_THRESHOLD = 5;
-const SECOND_PHASE_POPCORN_SPEED_MULTIPLIER = 1.25;
-const BOTTOM_POPCORN_MIN_SCREEN_REACH = 0.6;
+import { PlayerHead } from './PlayerHead';
+import { Popcorn } from './Popcorn';
+import { gameplayConfig } from './gameplayConfig';
 
 /**
  * Простая игра: двигаем голову и ловим летящий попкорн ртом.
  */
 export class GameScene extends Phaser.Scene {
-  private head!: Phaser.GameObjects.Container;
-  private mouth!: Phaser.GameObjects.Arc;
-  private popcorn!: Phaser.GameObjects.Container;
+  private head!: PlayerHead;
+  private popcorn!: Popcorn;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private scoreText!: Phaser.GameObjects.Text;
@@ -29,7 +17,6 @@ export class GameScene extends Phaser.Scene {
   private restartKey!: Phaser.Input.Keyboard.Key;
   private pauseKey!: Phaser.Input.Keyboard.Key;
   private score = 0;
-  private popcornVelocity = new Phaser.Math.Vector2(0, 0);
   private isGameOver = false;
   private isPaused = false;
   private isSecondPhase = false;
@@ -57,8 +44,8 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
 
-    this.createPlayerHead(width / 2, height * 0.68);
-    this.createPopcorn();
+    this.head = new PlayerHead(this, width / 2, height * gameplayConfig.head.startYRatio);
+    this.popcorn = new Popcorn(this);
 
     this.scoreText = this.add.text(24, height - 48, 'Счёт: 0', {
       fontFamily: 'system-ui, sans-serif',
@@ -67,7 +54,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.timerText = this.add
-      .text(width - 24, height - 48, `Фаза 1: ${SECOND_PHASE_SCORE_THRESHOLD} очков`, {
+      .text(width - 24, height - 48, `Фаза 1: ${gameplayConfig.phases.secondPhaseScoreThreshold} очков`, {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '22px',
         color: '#ffffff',
@@ -125,7 +112,7 @@ export class GameScene extends Phaser.Scene {
   private checkSecondPhaseStart(): void {
     if (this.isSecondPhase) return;
 
-    const pointsLeft = SECOND_PHASE_SCORE_THRESHOLD - this.score;
+    const pointsLeft = gameplayConfig.phases.secondPhaseScoreThreshold - this.score;
     if (pointsLeft > 0) {
       this.timerText.setText(`Фаза 1: ${pointsLeft} очков`);
       return;
@@ -134,30 +121,11 @@ export class GameScene extends Phaser.Scene {
     this.isSecondPhase = true;
     this.timerText.setText('Фаза 2');
     this.messageText.setText('Наступила вторая фаза!');
-    this.time.delayedCall(2200, () => {
+    this.time.delayedCall(gameplayConfig.phases.secondPhaseMessageDurationMs, () => {
       if (!this.isGameOver && !this.isPaused) {
         this.messageText.setText('');
       }
     });
-  }
-
-  private createPlayerHead(x: number, y: number): void {
-    const face = this.add.circle(0, 0, HEAD_RADIUS, 0xfbbf24);
-    const leftEye = this.add.circle(-14, -12, 5, 0x111827);
-    const rightEye = this.add.circle(14, -12, 5, 0x111827);
-    this.mouth = this.add.circle(0, 18, MOUTH_RADIUS, 0x7f1d1d).setScale(1.25, 0.72);
-
-    this.head = this.add.container(x, y, [face, leftEye, rightEye, this.mouth]);
-  }
-
-  private createPopcorn(): void {
-    const shadow = this.add.circle(2, 3, POPCORN_RADIUS, 0xd97706, 0.35);
-    const kernel = this.add.circle(0, 0, POPCORN_RADIUS, 0xfff7ad);
-    const bumpA = this.add.circle(-6, -7, 7, 0xffffff);
-    const bumpB = this.add.circle(7, -5, 6, 0xfffbeb);
-    const bumpC = this.add.circle(1, 7, 7, 0xfde68a);
-
-    this.popcorn = this.add.container(0, 0, [shadow, kernel, bumpA, bumpB, bumpC]);
   }
 
   private moveHead(seconds: number): void {
@@ -169,29 +137,15 @@ export class GameScene extends Phaser.Scene {
     if (this.cursors.up.isDown || this.wasd.up.isDown) dy -= 1;
     if (this.cursors.down.isDown || this.wasd.down.isDown) dy += 1;
 
-    if (dx !== 0 || dy !== 0) {
-      const length = Math.hypot(dx, dy);
-      this.head.x += (dx / length) * HEAD_SPEED * seconds;
-      this.head.y += (dy / length) * HEAD_SPEED * seconds;
-    }
-
-    this.keepHeadOnScreen();
-  }
-
-  private keepHeadOnScreen(): void {
-    this.head.x = Phaser.Math.Clamp(this.head.x, HEAD_RADIUS, this.scale.width - HEAD_RADIUS);
-    this.head.y = Phaser.Math.Clamp(
-      this.head.y,
-      GAME_TOP_PADDING + HEAD_RADIUS,
-      this.scale.height - HEAD_RADIUS,
-    );
+    this.head.move(dx, dy, seconds);
+    this.head.keepOnScreen(this.scale.width, this.scale.height);
   }
 
   private launchPopcorn(): void {
     const spawnSide = this.isSecondPhase ? Phaser.Math.Between(0, 3) : Phaser.Math.Between(0, 1);
-    const speedX = Phaser.Math.Between(POPCORN_MIN_SPEED_X, POPCORN_MAX_SPEED_X);
-    const speedY = Phaser.Math.Between(POPCORN_MIN_SPEED_Y, POPCORN_MAX_SPEED_Y);
-    const speedMultiplier = this.isSecondPhase ? SECOND_PHASE_POPCORN_SPEED_MULTIPLIER : 1;
+    const speedX = Phaser.Math.Between(gameplayConfig.popcorn.minSpeedX, gameplayConfig.popcorn.maxSpeedX);
+    const speedY = Phaser.Math.Between(gameplayConfig.popcorn.minSpeedY, gameplayConfig.popcorn.maxSpeedY);
+    const speedMultiplier = this.isSecondPhase ? gameplayConfig.phases.secondPhasePopcornSpeedMultiplier : 1;
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
 
@@ -202,49 +156,50 @@ export class GameScene extends Phaser.Scene {
 
     if (spawnSide === 0 || spawnSide === 1) {
       const fromLeft = spawnSide === 0;
-      const minSideStartY = Math.min(Math.max(GAME_TOP_PADDING + 20, centerY + 20), this.scale.height - 180);
-      startX = fromLeft ? -POPCORN_RADIUS : this.scale.width + POPCORN_RADIUS;
-      startY = Phaser.Math.Between(minSideStartY, this.scale.height - 180);
+      const minSideStartY = Math.min(
+        Math.max(
+          gameplayConfig.layout.topPadding + gameplayConfig.popcorn.sideSpawnYOffset,
+          centerY + gameplayConfig.popcorn.sideSpawnYOffset,
+        ),
+        this.scale.height - gameplayConfig.popcorn.sideSpawnBottomPadding,
+      );
+      startX = fromLeft ? -gameplayConfig.popcorn.radius : this.scale.width + gameplayConfig.popcorn.radius;
+      startY = Phaser.Math.Between(minSideStartY, this.scale.height - gameplayConfig.popcorn.sideSpawnBottomPadding);
       velocityX = fromLeft ? speedX : -speedX;
       velocityY = speedY;
     } else {
       const fromTop = spawnSide === 2;
-      startX = Phaser.Math.Between(POPCORN_RADIUS, this.scale.width - POPCORN_RADIUS);
-      startY = fromTop ? -POPCORN_RADIUS : this.scale.height + POPCORN_RADIUS;
+      startX = Phaser.Math.Between(gameplayConfig.popcorn.radius, this.scale.width - gameplayConfig.popcorn.radius);
+      startY = fromTop ? -gameplayConfig.popcorn.radius : this.scale.height + gameplayConfig.popcorn.radius;
       velocityX = startX < centerX ? speedX : -speedX;
       velocityY = fromTop ? Math.abs(speedY) : this.getBottomPopcornSpeedY(startY);
     }
 
     this.popcorn.setPosition(startX, startY);
-    this.popcornVelocity.set(velocityX * speedMultiplier, velocityY * speedMultiplier);
+    this.popcorn.setVelocity(velocityX * speedMultiplier, velocityY * speedMultiplier);
   }
 
   private getBottomPopcornSpeedY(startY: number): number {
-    const targetY = this.scale.height * BOTTOM_POPCORN_MIN_SCREEN_REACH;
+    const targetY = this.scale.height * gameplayConfig.popcorn.bottomMinScreenReach;
     const distanceToTarget = startY - targetY;
-    const minSpeedToReachTarget = Math.sqrt(2 * POPCORN_GRAVITY * distanceToTarget);
+    const minSpeedToReachTarget = Math.sqrt(2 * gameplayConfig.popcorn.gravity * distanceToTarget);
 
-    return -Math.max(Math.abs(POPCORN_MIN_SPEED_Y), minSpeedToReachTarget);
+    return -Math.max(Math.abs(gameplayConfig.popcorn.minSpeedY), minSpeedToReachTarget);
   }
 
   private movePopcorn(seconds: number): void {
-    this.popcornVelocity.y += POPCORN_GRAVITY * seconds;
-    this.popcorn.x += this.popcornVelocity.x * seconds;
-    this.popcorn.y += this.popcornVelocity.y * seconds;
-    this.popcorn.rotation += 5 * seconds;
+    this.popcorn.move(seconds);
   }
 
   private checkPopcornCatch(): void {
-    const mouthX = this.head.x + this.mouth.x;
-    const mouthY = this.head.y + this.mouth.y;
     const distanceToMouth = Phaser.Math.Distance.Between(
-      mouthX,
-      mouthY,
+      this.head.mouthX,
+      this.head.mouthY,
       this.popcorn.x,
       this.popcorn.y,
     );
 
-    if (distanceToMouth > MOUTH_RADIUS + POPCORN_RADIUS) return;
+    if (distanceToMouth > gameplayConfig.mouth.radius + gameplayConfig.popcorn.radius) return;
 
     this.score += 1;
     this.scoreText.setText(`Счёт: ${this.score}`);
@@ -253,12 +208,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkPopcornMiss(): void {
-    const fellBelowScreen = this.popcorn.y > this.scale.height + POPCORN_RADIUS;
-    const flewPastTop = this.popcorn.y < -POPCORN_RADIUS * 3;
-    const flewPastLeft = this.popcorn.x < -POPCORN_RADIUS * 3;
-    const flewPastRight = this.popcorn.x > this.scale.width + POPCORN_RADIUS * 3;
-
-    if (!fellBelowScreen && !flewPastTop && !flewPastLeft && !flewPastRight) return;
+    if (!this.popcorn.isOutOfBounds(this.scale.width, this.scale.height)) return;
 
     this.isGameOver = true;
     this.isPaused = false;
@@ -276,9 +226,9 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.isSecondPhase = false;
     this.scoreText.setText('Счёт: 0');
-    this.timerText.setText(`Фаза 1: ${SECOND_PHASE_SCORE_THRESHOLD} очков`);
+    this.timerText.setText(`Фаза 1: ${gameplayConfig.phases.secondPhaseScoreThreshold} очков`);
     this.messageText.setText('');
-    this.head.setPosition(this.scale.width / 2, this.scale.height * 0.68);
+    this.head.setPosition(this.scale.width / 2, this.scale.height * gameplayConfig.head.startYRatio);
     this.launchPopcorn();
   }
 }
