@@ -23,9 +23,11 @@ export class GameScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private restartKey!: Phaser.Input.Keyboard.Key;
+  private pauseKey!: Phaser.Input.Keyboard.Key;
   private score = 0;
   private popcornVelocity = new Phaser.Math.Vector2(0, 0);
   private isGameOver = false;
+  private isPaused = false;
 
   constructor() {
     super('GameScene');
@@ -43,7 +45,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0);
 
     this.add
-      .text(width / 2, 62, 'Стрелки / WASD — двигай голову. Пропустил попкорн — игра окончена.', {
+      .text(width / 2, 62, 'Стрелки / WASD — двигай голову. P — пауза. Пропустил попкорн — игра окончена.', {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '18px',
         color: '#cbd5e1',
@@ -80,6 +82,7 @@ export class GameScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.pauseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.input.on('pointerdown', () => {
       if (this.isGameOver) this.restartGame();
     });
@@ -88,10 +91,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    if (!this.isGameOver && Phaser.Input.Keyboard.JustDown(this.pauseKey)) {
+      this.togglePause();
+    }
+
     if (this.isGameOver) {
       if (Phaser.Input.Keyboard.JustDown(this.restartKey)) this.restartGame();
       return;
     }
+
+    if (this.isPaused) return;
 
     const seconds = delta / 1000;
     this.moveHead(seconds);
@@ -189,12 +198,19 @@ export class GameScene extends Phaser.Scene {
     if (!fellBelowScreen && !flewPastLeft && !flewPastRight) return;
 
     this.isGameOver = true;
+    this.isPaused = false;
     this.messageText.setText(`Игра окончена\nСчёт: ${this.score}\nSpace или клик — заново`);
+  }
+
+  private togglePause(): void {
+    this.isPaused = !this.isPaused;
+    this.messageText.setText(this.isPaused ? 'Пауза\nP — продолжить' : '');
   }
 
   private restartGame(): void {
     this.score = 0;
     this.isGameOver = false;
+    this.isPaused = false;
     this.scoreText.setText('Счёт: 0');
     this.messageText.setText('');
     this.head.setPosition(this.scale.width / 2, this.scale.height * 0.68);
