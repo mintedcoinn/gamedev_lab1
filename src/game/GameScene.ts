@@ -192,6 +192,8 @@ export class GameScene extends Phaser.Scene {
     const speedX = Phaser.Math.Between(POPCORN_MIN_SPEED_X, POPCORN_MAX_SPEED_X);
     const speedY = Phaser.Math.Between(POPCORN_MIN_SPEED_Y, POPCORN_MAX_SPEED_Y);
     const speedMultiplier = this.isSecondPhase ? SECOND_PHASE_POPCORN_SPEED_MULTIPLIER : 1;
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
 
     let startX = 0;
     let startY = 0;
@@ -200,15 +202,16 @@ export class GameScene extends Phaser.Scene {
 
     if (spawnSide === 0 || spawnSide === 1) {
       const fromLeft = spawnSide === 0;
+      const minSideStartY = Math.min(Math.max(GAME_TOP_PADDING + 20, centerY + 20), this.scale.height - 180);
       startX = fromLeft ? -POPCORN_RADIUS : this.scale.width + POPCORN_RADIUS;
-      startY = Phaser.Math.Between(GAME_TOP_PADDING + 20, this.scale.height - 180);
+      startY = Phaser.Math.Between(minSideStartY, this.scale.height - 180);
       velocityX = fromLeft ? speedX : -speedX;
       velocityY = speedY;
     } else {
       const fromTop = spawnSide === 2;
       startX = Phaser.Math.Between(POPCORN_RADIUS, this.scale.width - POPCORN_RADIUS);
       startY = fromTop ? -POPCORN_RADIUS : this.scale.height + POPCORN_RADIUS;
-      velocityX = Phaser.Math.Between(-POPCORN_MAX_SPEED_X, POPCORN_MAX_SPEED_X);
+      velocityX = startX < centerX ? speedX : -speedX;
       velocityY = fromTop ? Math.abs(speedY) : this.getBottomPopcornSpeedY(startY);
     }
 
