@@ -153,6 +153,7 @@ export class GameScene extends Phaser.Scene {
     let startY = 0;
     let velocityX = 0;
     let velocityY = 0;
+    let keepInsideScreen = false;
 
     if (spawnSide === 0 || spawnSide === 1) {
       const fromLeft = spawnSide === 0;
@@ -170,12 +171,25 @@ export class GameScene extends Phaser.Scene {
     } else {
       const fromTop = spawnSide === 2;
       startX = Phaser.Math.Between(gameplayConfig.popcorn.radius, this.scale.width - gameplayConfig.popcorn.radius);
-      startY = fromTop ? -gameplayConfig.popcorn.radius : this.scale.height + gameplayConfig.popcorn.radius;
-      velocityX = startX < centerX ? speedX : -speedX;
-      velocityY = fromTop ? Math.abs(speedY) : this.getBottomPopcornSpeedY(startY);
+      if (fromTop) {
+        startY = -gameplayConfig.popcorn.radius;
+        velocityX = startX < centerX ? speedX : -speedX;
+        velocityY = Phaser.Math.Between(
+          gameplayConfig.popcorn.topSpawnMinSpeedY,
+          gameplayConfig.popcorn.topSpawnMaxSpeedY,
+        );
+      } else {
+        keepInsideScreen = true;
+        startY = this.scale.height - gameplayConfig.popcorn.radius;
+        velocityX = Phaser.Math.Between(
+          -gameplayConfig.popcorn.bottomSpawnHorizontalDrift,
+          gameplayConfig.popcorn.bottomSpawnHorizontalDrift,
+        );
+        velocityY = this.getBottomPopcornSpeedY(startY);
+      }
     }
 
-    this.popcorn.setPosition(startX, startY);
+    this.popcorn.setPosition(startX, startY, keepInsideScreen);
     this.popcorn.setVelocity(velocityX * speedMultiplier, velocityY * speedMultiplier);
   }
 
@@ -188,7 +202,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private movePopcorn(seconds: number): void {
-    this.popcorn.move(seconds);
+    this.popcorn.move(seconds, this.scale.width, this.scale.height);
   }
 
   private checkPopcornCatch(): void {
@@ -202,6 +216,7 @@ export class GameScene extends Phaser.Scene {
     if (distanceToMouth > gameplayConfig.mouth.radius + gameplayConfig.popcorn.radius) return;
 
     this.score += 1;
+    this.head.boostSpeed();
     this.scoreText.setText(`Счёт: ${this.score}`);
     this.checkSecondPhaseStart();
     this.launchPopcorn();

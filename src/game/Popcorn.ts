@@ -4,6 +4,8 @@ import { gameplayConfig } from './gameplayConfig';
 export class Popcorn {
   private readonly container: Phaser.GameObjects.Container;
   private readonly velocity = new Phaser.Math.Vector2(0, 0);
+  private keepInsideScreen = false;
+  private landed = false;
 
   constructor(scene: Phaser.Scene) {
     const shadow = scene.add.circle(2, 3, gameplayConfig.popcorn.radius, 0xd97706, 0.35);
@@ -23,24 +25,40 @@ export class Popcorn {
     return this.container.y;
   }
 
-  setPosition(x: number, y: number): void {
+  setPosition(x: number, y: number, keepInsideScreen = false): void {
     this.container.setPosition(x, y);
+    this.keepInsideScreen = keepInsideScreen;
+    this.landed = false;
   }
 
   setVelocity(x: number, y: number): void {
     this.velocity.set(x, y);
   }
 
-  move(seconds: number): void {
+  move(seconds: number, width: number, height: number): void {
+    if (this.landed) return;
+
     this.velocity.y += gameplayConfig.popcorn.gravity * seconds;
-    this.container.x += this.velocity.x * seconds;
-    this.container.y += this.velocity.y * seconds;
+    const nextX = this.container.x + this.velocity.x * seconds;
+    const nextY = this.container.y + this.velocity.y * seconds;
+    this.container.x = this.keepInsideScreen
+      ? Phaser.Math.Clamp(nextX, gameplayConfig.popcorn.radius, width - gameplayConfig.popcorn.radius)
+      : nextX;
+    this.container.y = this.keepInsideScreen
+      ? Math.min(nextY, height - gameplayConfig.popcorn.radius)
+      : nextY;
+    if (this.keepInsideScreen && nextY >= height - gameplayConfig.popcorn.radius) {
+      this.landed = true;
+      this.velocity.set(0, 0);
+    }
     this.container.rotation += gameplayConfig.popcorn.rotationSpeed * seconds;
   }
 
   isOutOfBounds(width: number, height: number): boolean {
     const missPadding = gameplayConfig.popcorn.radius * gameplayConfig.popcorn.missBoundsMultiplier;
-    const fellBelowScreen = this.y > height + gameplayConfig.popcorn.radius;
+    const fellBelowScreen = this.keepInsideScreen
+      ? this.landed
+      : this.y > height + gameplayConfig.popcorn.radius;
     const flewPastTop = this.y < -missPadding;
     const flewPastLeft = this.x < -missPadding;
     const flewPastRight = this.x > width + missPadding;
