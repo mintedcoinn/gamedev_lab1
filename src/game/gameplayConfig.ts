@@ -3,6 +3,7 @@ export const gameplayConfig = {
     speed: 320,
     catchSpeedMultiplier: 1.5,
     catchSpeedDurationMs: 500,
+    escapeSpeedMultiplier: 1.5,
     radius: 42,
     startYRatio: 0.68,
   },
@@ -28,9 +29,21 @@ export const gameplayConfig = {
   layout: {
     topPadding: 104,
   },
+  controlsHint: {
+    durationMs: 2000,
+  },
   phases: {
-    secondPhaseScoreThreshold: 1,
+    secondPhaseScoreThreshold: 3,
     secondPhasePopcornSpeedMultiplier: 1.25,
     secondPhaseMessageDurationMs: 2200,
+    thirdPhaseScoreThreshold: 7,
+    thirdPhaseBouncePathRatio: 0.65,
+    thirdPhaseWarningPathRatio: 0.5,
+    thirdPhaseBounceDurationMs: 1250,
+    fourthPhaseScoreThreshold: 12,
+    fourthPhaseWarningDurationMs: 650,
+    fourthPhaseSpawnPadding: 72,
+    fourthPhaseSpawnMinDistanceFromHead: 160,
+    fourthPhaseArcDurationMs: 1150,
   },
 } as const;

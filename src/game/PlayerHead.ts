@@ -7,6 +7,7 @@ export class PlayerHead {
   private readonly face: Phaser.GameObjects.Arc;
   private speedBoostRemainingMs = 0;
   private boostEffectTime = 0;
+  private isEscapeBoostActive = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.face = scene.add.circle(0, 0, gameplayConfig.head.radius, 0xfbbf24);
@@ -26,8 +27,14 @@ export class PlayerHead {
   }
 
   move(dx: number, dy: number, seconds: number): void {
-    const isBoosted = this.speedBoostRemainingMs > 0;
-    const speed = gameplayConfig.head.speed * (isBoosted ? gameplayConfig.head.catchSpeedMultiplier : 1);
+    const isCatchBoostActive = this.speedBoostRemainingMs > 0;
+    const speedMultiplier = isCatchBoostActive
+      ? gameplayConfig.head.catchSpeedMultiplier
+      : this.isEscapeBoostActive
+        ? gameplayConfig.head.escapeSpeedMultiplier
+        : 1;
+    const isBoosted = isCatchBoostActive || this.isEscapeBoostActive;
+    const speed = gameplayConfig.head.speed * speedMultiplier;
     this.speedBoostRemainingMs = Math.max(0, this.speedBoostRemainingMs - seconds * 1000);
     this.updateBoostEffect(isBoosted, seconds);
 
@@ -42,6 +49,10 @@ export class PlayerHead {
     this.speedBoostRemainingMs = gameplayConfig.head.catchSpeedDurationMs;
     this.boostEffectTime = 0;
     this.updateBoostEffect(true, 0);
+  }
+
+  setEscapeBoost(isActive: boolean): void {
+    this.isEscapeBoostActive = isActive;
   }
 
   keepOnScreen(width: number, height: number): void {
@@ -60,6 +71,7 @@ export class PlayerHead {
   setPosition(x: number, y: number): void {
     this.container.setPosition(x, y);
     this.speedBoostRemainingMs = 0;
+    this.isEscapeBoostActive = false;
     this.updateBoostEffect(false, 0);
   }
 

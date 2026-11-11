@@ -25,6 +25,14 @@ export class Popcorn {
     return this.container.y;
   }
 
+  get velocityX(): number {
+    return this.velocity.x;
+  }
+
+  get velocityY(): number {
+    return this.velocity.y;
+  }
+
   setPosition(x: number, y: number, keepInsideScreen = false): void {
     this.container.setPosition(x, y);
     this.keepInsideScreen = keepInsideScreen;
@@ -33,6 +41,17 @@ export class Popcorn {
 
   setVelocity(x: number, y: number): void {
     this.velocity.set(x, y);
+  }
+
+  setVisible(isVisible: boolean): void {
+    this.container.setVisible(isVisible);
+  }
+
+  bounceBack(horizontalSpeed: number, verticalSpeed: number): void {
+    this.velocity.x = horizontalSpeed;
+    this.velocity.y = verticalSpeed;
+    this.keepInsideScreen = true;
+    this.landed = false;
   }
 
   move(seconds: number, width: number, height: number): void {
