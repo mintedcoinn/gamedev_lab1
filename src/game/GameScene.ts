@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PlayerHead } from './PlayerHead';
 import { Popcorn } from './Popcorn';
 import { gameplayConfig } from './gameplayConfig';
+import { track } from '../analytics';
 
 const TRAJECTORY_SAMPLE_SECONDS = 1 / 60;
 const MAX_TRAJECTORY_DURATION_SECONDS = 10;
@@ -730,5 +731,7 @@ export class GameScene extends Phaser.Scene {
     } catch {
       // Сбор метрик не должен мешать игровому процессу.
     }
+
+    track(type, { score: this.score, phase, ...details });
   }
 }
