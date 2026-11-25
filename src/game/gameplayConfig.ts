@@ -45,5 +45,10 @@ export const gameplayConfig = {
     fourthPhaseSpawnPadding: 72,
     fourthPhaseSpawnMinDistanceFromHead: 160,
     fourthPhaseArcDurationMs: 1150,
+    fourthPhaseBouncePathRatio: 0.65,
+    fourthPhaseBounceWarningPathRatio: 0.5,
+    fourthPhaseBounceDurationMs: 850,
+    fifthPhaseScoreThreshold: 18,
+    fifthPhasePopcornSpeedMultiplier: 1.5,
   },
 } as const;

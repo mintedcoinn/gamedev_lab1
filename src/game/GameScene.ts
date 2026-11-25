@@ -5,6 +5,16 @@ import { gameplayConfig } from './gameplayConfig';
 
 const TRAJECTORY_SAMPLE_SECONDS = 1 / 60;
 const MAX_TRAJECTORY_DURATION_SECONDS = 10;
+const GAME_EVENTS_STORAGE_KEY = 'popcorn-game-events';
+
+type GameEventType = 'game_start' | 'game_restart' | 'popcorn_caught' | 'phase_changed' | 'pause_changed' | 'game_over';
+
+interface GameEvent {
+  type: GameEventType;
+  timestamp: string;
+  score: number;
+  phase: number;
+}
 
 /**
  * Простая игра: двигаем голову и ловим летящий попкорн ртом.
@@ -25,6 +35,9 @@ export class GameScene extends Phaser.Scene {
   private isSecondPhase = false;
   private isThirdPhase = false;
   private isFourthPhase = false;
+  private isFifthPhase = false;
+  private lastSpawnDirection = -1;
+  private consecutiveSpawnCount = 0;
   private isThirdPhaseBounceEligible = false;
   private thirdPhaseTravelledDistance = 0;
   private thirdPhaseTotalTravelDistance = 0;
@@ -34,7 +47,12 @@ export class GameScene extends Phaser.Scene {
   private fourthPhaseWarningElapsedMs = 0;
   private fourthPhaseSpawnPoint?: Phaser.Math.Vector2;
   private fourthPhaseWarning?: Phaser.GameObjects.Arc;
+  private hasFourthPhaseBounced = false;
+  private fourthPhaseTravelledDistance = 0;
+  private fourthPhaseTotalTravelDistance = 0;
+  private fourthPhaseBounceWarning?: Phaser.GameObjects.Arc;
   private isShowingControlsHint = true;
+  private gameStartedAt = 0;
 
   constructor() {
     super('GameScene');
@@ -153,6 +171,8 @@ export class GameScene extends Phaser.Scene {
       this.isShowingControlsHint = false;
       this.launchPopcorn();
     });
+    this.gameStartedAt = Date.now();
+    this.recordGameEvent('game_start');
   }
 
   update(_time: number, delta: number): void {
@@ -188,6 +208,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.isSecondPhase = true;
+      this.recordGameEvent('phase_changed', { phase: 2 });
       this.showPhaseMessage('Наступила вторая фаза!');
     }
 
@@ -199,6 +220,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.isThirdPhase = true;
+      this.recordGameEvent('phase_changed', { phase: 3 });
       this.timerText.setText('Фаза 3');
       this.showPhaseMessage('Наступила третья фаза!');
     }
@@ -211,8 +233,22 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.isFourthPhase = true;
+      this.recordGameEvent('phase_changed', { phase: 4 });
       this.timerText.setText('Фаза 4');
       this.showPhaseMessage('Наступила четвёртая фаза!');
+    }
+
+    if (!this.isFifthPhase) {
+      const pointsLeft = gameplayConfig.phases.fifthPhaseScoreThreshold - this.score;
+      if (pointsLeft > 0) {
+        this.timerText.setText(`Фаза 4: ${pointsLeft} очков`);
+        return;
+      }
+
+      this.isFifthPhase = true;
+      this.recordGameEvent('phase_changed', { phase: 5 });
+      this.timerText.setText('Фаза 5');
+      this.showPhaseMessage('Наступила пятая фаза!');
     }
   }
 
@@ -249,15 +285,31 @@ export class GameScene extends Phaser.Scene {
   }
 
   private launchPopcorn(): void {
-    if (this.isFourthPhase) {
+    if (this.isFourthPhase && !this.isFifthPhase) {
       this.startFourthPhaseSpawn();
       return;
     }
 
-    const spawnSide = this.isSecondPhase ? Phaser.Math.Between(0, 3) : Phaser.Math.Between(0, 1);
+    const availableSpawnSides = this.isFifthPhase ? 5 : this.isSecondPhase ? 4 : 2;
+    let spawnSide = this.isFifthPhase
+      ? Phaser.Math.Between(0, 4)
+      : this.isSecondPhase
+        ? Phaser.Math.Between(0, 3)
+        : Phaser.Math.Between(0, 1);
+    if (spawnSide === this.lastSpawnDirection && this.consecutiveSpawnCount >= 2) {
+      const alternativeSides = Array.from({ length: availableSpawnSides }, (_, side) => side)
+        .filter((side) => side !== this.lastSpawnDirection);
+      spawnSide = Phaser.Utils.Array.GetRandom(alternativeSides);
+    }
+    this.consecutiveSpawnCount = spawnSide === this.lastSpawnDirection ? this.consecutiveSpawnCount + 1 : 1;
+    this.lastSpawnDirection = spawnSide;
     const speedX = Phaser.Math.Between(gameplayConfig.popcorn.minSpeedX, gameplayConfig.popcorn.maxSpeedX);
     const speedY = Phaser.Math.Between(gameplayConfig.popcorn.minSpeedY, gameplayConfig.popcorn.maxSpeedY);
-    const speedMultiplier = this.isSecondPhase ? gameplayConfig.phases.secondPhasePopcornSpeedMultiplier : 1;
+    const speedMultiplier = this.isFifthPhase
+      ? gameplayConfig.phases.fifthPhasePopcornSpeedMultiplier
+      : this.isSecondPhase
+        ? gameplayConfig.phases.secondPhasePopcornSpeedMultiplier
+        : 1;
     const centerX = this.scale.width / 2;
     const centerY = this.scale.height / 2;
 
@@ -305,7 +357,7 @@ export class GameScene extends Phaser.Scene {
     this.popcorn.setVisible(true);
     this.popcorn.setPosition(startX, startY, keepInsideScreen);
     this.popcorn.setVelocity(velocityX * speedMultiplier, velocityY * speedMultiplier);
-    this.isThirdPhaseBounceEligible = this.isThirdPhase && spawnSide !== 3;
+    this.isThirdPhaseBounceEligible = (this.isThirdPhase || this.isFifthPhase) && spawnSide !== 3;
     this.thirdPhaseTravelledDistance = 0;
     this.thirdPhaseTotalTravelDistance = this.isThirdPhaseBounceEligible
       ? this.calculateTrajectoryDistance(
@@ -317,6 +369,10 @@ export class GameScene extends Phaser.Scene {
         )
       : 0;
     this.hasThirdPhaseBounced = false;
+    if (this.isFifthPhase && spawnSide === 4) {
+      this.startFourthPhaseSpawn();
+      return;
+    }
   }
 
   private startFourthPhaseSpawn(): void {
@@ -382,6 +438,15 @@ export class GameScene extends Phaser.Scene {
 
     this.clearFourthPhaseWarning();
     this.isWaitingForFourthPhaseSpawn = false;
+    this.hasFourthPhaseBounced = false;
+    this.fourthPhaseTravelledDistance = 0;
+    this.fourthPhaseTotalTravelDistance = this.calculateTrajectoryDistance(
+      spawnPoint.x,
+      spawnPoint.y,
+      horizontalSpeed,
+      verticalSpeed,
+      true,
+    );
     this.fourthPhaseSpawnPoint = undefined;
     this.popcorn.setVisible(true);
     this.popcorn.setPosition(spawnPoint.x, spawnPoint.y, true);
@@ -398,6 +463,11 @@ export class GameScene extends Phaser.Scene {
   private clearFourthPhaseWarning(): void {
     this.fourthPhaseWarning?.destroy();
     this.fourthPhaseWarning = undefined;
+  }
+
+  private clearFourthPhaseBounceWarning(): void {
+    this.fourthPhaseBounceWarning?.destroy();
+    this.fourthPhaseBounceWarning = undefined;
   }
 
   private getBottomPopcornSpeedY(startY: number): number {
@@ -453,8 +523,61 @@ export class GameScene extends Phaser.Scene {
       this.popcorn.x,
       this.popcorn.y,
     );
+    if (this.isFourthPhase && !this.hasFourthPhaseBounced) {
+      this.fourthPhaseTravelledDistance += Phaser.Math.Distance.Between(
+        previousX,
+        previousY,
+        this.popcorn.x,
+        this.popcorn.y,
+      );
+    }
     this.updateThirdPhaseWarning();
     this.tryThirdPhaseBounce();
+    this.updateFourthPhaseBounceWarning();
+    this.tryFourthPhaseBounce();
+  }
+
+  private updateFourthPhaseBounceWarning(): void {
+    if ((!this.isFourthPhase && !this.isFifthPhase) || this.hasFourthPhaseBounced) return;
+
+    const warningDistance = this.fourthPhaseTotalTravelDistance * gameplayConfig.phases.fourthPhaseBounceWarningPathRatio;
+    if (this.fourthPhaseTravelledDistance < warningDistance) return;
+
+    if (!this.fourthPhaseBounceWarning) {
+      this.fourthPhaseBounceWarning = this.add
+        .circle(this.popcorn.x, this.popcorn.y, gameplayConfig.popcorn.radius * 1.7, 0xff6b35, 0)
+        .setStrokeStyle(3, 0xff6b35, 1);
+    }
+
+    const pulse = (Math.sin(this.time.now / 80) + 1) / 2;
+    this.fourthPhaseBounceWarning.setPosition(this.popcorn.x, this.popcorn.y).setAlpha(0.45 + pulse * 0.55);
+  }
+
+  private tryFourthPhaseBounce(): void {
+    if ((!this.isFourthPhase && !this.isFifthPhase) || this.hasFourthPhaseBounced) return;
+
+    const bounceDistance = this.fourthPhaseTotalTravelDistance * gameplayConfig.phases.fourthPhaseBouncePathRatio;
+    if (this.fourthPhaseTravelledDistance < bounceDistance) return;
+    if (this.popcorn.y >= this.scale.height - gameplayConfig.popcorn.radius) return;
+
+    const bottomY = this.scale.height - gameplayConfig.popcorn.radius;
+    const distanceToBottom = bottomY - this.popcorn.y;
+    const minimumDuration = Math.sqrt((2 * distanceToBottom) / gameplayConfig.popcorn.gravity) + 0.1;
+    const duration = Math.max(gameplayConfig.phases.fourthPhaseBounceDurationMs / 1000, minimumDuration);
+    const horizontalSpeed = (this.head.mouthX - this.popcorn.x) / duration;
+    const verticalSpeed = (distanceToBottom - (gameplayConfig.popcorn.gravity * duration * duration) / 2) / duration;
+    const burst = this.add.circle(this.popcorn.x, this.popcorn.y, gameplayConfig.popcorn.radius, 0xffffff, 0.8);
+
+    this.hasFourthPhaseBounced = true;
+    this.clearFourthPhaseBounceWarning();
+    this.popcorn.bounceBack(horizontalSpeed, verticalSpeed);
+    this.tweens.add({
+      targets: burst,
+      alpha: 0,
+      scale: 2.5,
+      duration: 180,
+      onComplete: () => burst.destroy(),
+    });
   }
 
   private updateThirdPhaseWarning(): void {
@@ -520,6 +643,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.isPopcornCaught(this.popcorn)) return;
 
     this.score += 1;
+    this.recordGameEvent('popcorn_caught');
     this.head.boostSpeed();
     this.scoreText.setText(`Счёт: ${this.score}`);
     this.checkPhaseStart();
@@ -542,6 +666,7 @@ export class GameScene extends Phaser.Scene {
 
     this.isGameOver = true;
     this.isPaused = false;
+    this.recordGameEvent('game_over', { durationMs: Date.now() - this.gameStartedAt });
     this.clearThirdPhaseWarning();
     this.clearFourthPhaseWarning();
     this.messageText.setText(`Игра окончена\nСчёт: ${this.score}\nSpace или клик — заново`);
@@ -549,16 +674,22 @@ export class GameScene extends Phaser.Scene {
 
   private togglePause(): void {
     this.isPaused = !this.isPaused;
+    this.recordGameEvent('pause_changed', { paused: this.isPaused });
     this.messageText.setText(this.isPaused ? 'Пауза\nP — продолжить' : '');
   }
 
   private restartGame(): void {
+    this.recordGameEvent('game_restart');
+    this.gameStartedAt = Date.now();
     this.score = 0;
     this.isGameOver = false;
     this.isPaused = false;
     this.isSecondPhase = false;
     this.isThirdPhase = false;
     this.isFourthPhase = false;
+    this.isFifthPhase = false;
+    this.lastSpawnDirection = -1;
+    this.consecutiveSpawnCount = 0;
     this.isShowingControlsHint = false;
     this.isThirdPhaseBounceEligible = false;
     this.thirdPhaseTravelledDistance = 0;
@@ -568,11 +699,36 @@ export class GameScene extends Phaser.Scene {
     this.isWaitingForFourthPhaseSpawn = false;
     this.fourthPhaseWarningElapsedMs = 0;
     this.fourthPhaseSpawnPoint = undefined;
+    this.hasFourthPhaseBounced = false;
+    this.fourthPhaseTravelledDistance = 0;
+    this.fourthPhaseTotalTravelDistance = 0;
+    this.clearFourthPhaseWarning();
+    this.clearFourthPhaseBounceWarning();
     this.clearFourthPhaseWarning();
     this.scoreText.setText('Счёт: 0');
     this.timerText.setText(`Фаза 1: ${gameplayConfig.phases.secondPhaseScoreThreshold} очков`);
     this.messageText.setText('');
     this.head.setPosition(this.scale.width / 2, this.scale.height * gameplayConfig.head.startYRatio);
     this.launchPopcorn();
+  }
+
+  private recordGameEvent(type: GameEventType, details: Record<string, number | boolean> = {}): void {
+    const phase = this.isFifthPhase ? 5 : this.isFourthPhase ? 4 : this.isThirdPhase ? 3 : this.isSecondPhase ? 2 : 1;
+    const event: GameEvent & { details?: Record<string, number | boolean> } = {
+      type,
+      timestamp: new Date().toISOString(),
+      score: this.score,
+      phase,
+      ...(Object.keys(details).length > 0 ? { details } : {}),
+    };
+
+    try {
+      const savedEvents = localStorage.getItem(GAME_EVENTS_STORAGE_KEY);
+      const events = savedEvents ? (JSON.parse(savedEvents) as unknown[]) : [];
+      events.push(event);
+      localStorage.setItem(GAME_EVENTS_STORAGE_KEY, JSON.stringify(events));
+    } catch {
+      // Сбор метрик не должен мешать игровому процессу.
+    }
   }
 }
